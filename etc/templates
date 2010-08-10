@@ -1,0 +1,49 @@
+[default]
+vram: 1.5
+vcpus: 1
+mgmt_classes: xen
+profile: el5
+nics: eth0
+hddsize: 8
+storage: netapp
+vm_template: CentOS 5.3 x64
+
+[resin]
+vram: 4
+vcpus: 4
+mgmt_classes: resin xen
+profile: el5
+nics: eth0
+hddsize: 40
+storage: netapp
+vm_template: CentOS 5.3 x64
+
+[tomcat]
+vram: 4
+vcpus: 4
+mgmt_classes: tomcat6 xen
+profile: el5
+nics: eth0
+hddsize: 40
+storage: netapp
+vm_template: CentOS 5.3 x64
+
+[basic]
+vram: 1.5
+vcpus: 1
+mgmt_classes: xen
+profile: el5
+nics: eth0
+hddsize: 8
+storage: netapp
+vm_template: CentOS 5.3 x64
+
+[mysql]
+vram: 4
+vcpus: 4
+mgmt_classes: mysql xen
+profile: el5
+nics: eth0
+hddsize: 128
+storage: netapp
+vm_template: CentOS 5.3 x64
