@@ -1,11 +1,36 @@
 #!/usr/bin/python
+#============================================================================
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of version 3.0 of the GNU General Public
+# License as published by the Free Software Foundation.
+#
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU General Public
+# License along with this library; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+#============================================================================
+# Copyright (C) 2010 David Wahlstrom
+#============================================================================
+#
+# By obtaining, using, and/or copying this software and/or its
+# associated documentation, you agree that you have read, understood,
+# and will comply with the following terms and conditions:
+#
+# Permission to use, copy, modify, and distribute this software and
+# its associated documentation for any purpose and without fee is
+# hereby granted, provided that the above copyright notice appears in
+# all copies, and that both that copyright notice and this permission
+# notice appear in supporting documentation, and that the name of
+# Secret Labs AB or the author not be used in advertising or publicity
+# pertaining to distribution of the software without specific, written
+# prior permission.
+#
+# --------------------------------------------------------------------
 
-# Copyright 2010 David Wahlstrom
-# This file is part of mkvm.py.
-# mkvm.py is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
-
-# Foobar is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
-# You should have received a copy of the GNU General Public License along with Foobar. If not, see http://www.gnu.org/licenses/.
 import ConfigParser
 import getpass
 import logging
