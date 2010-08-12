@@ -316,6 +316,7 @@ class XenVM(VM):
 
         # start the vm, if desired.
         if self.autostart:
+            xenapi.VM.power_state_reset(self.vm_uuid)
             self.start()
         else:
             xenapi.VM.power_state_reset(self.vm_uuid)
@@ -324,15 +325,15 @@ class XenVM(VM):
         log.info('Booting %s' % self.name)
 
         try:
-            xenapi.VM.start(vm_uuid, False, True)
+            xenapi.VM.start(vm_uuid, True, True)
         except:
             log.info('First attempt to start VM has FAILED. Will try 2 more times...')
             try:
-                xenapi.VM.start(vm_uuid, False, True)
+                xenapi.VM.start(vm_uuid, True, True)
             except:
                 log.info('Second attempt to start VM has FAILED.  Will try 1 more time...')
                 try:
-                    xenapi.VM.start(vm_uuid, False, True)
+                    xenapi.VM.start(vm_uuid, True, True)
                 except:
                     log.info('Unable to start VM')
                     pass
