@@ -14,6 +14,7 @@
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 #============================================================================
 # Copyright (C) 2010 David Wahlstrom
+# Copyright (C) 2010 Brett Lentz
 #============================================================================
 #
 # By obtaining, using, and/or copying this software and/or its
@@ -505,6 +506,8 @@ def get_options():
                      help="Username on cobbler server. Will prompt if not passed on command line.")
     optional.add_option("-p", "--password", action="store", type="string", dest="password",
                      help="Password on cobbler server. Will prompt if not passed on command line.")
+    optional.add_option("-r", "--replace", action="store_true", dest="replace", dest="ignore",
+                     help="Replace existing VMs with same hostname.  Assumes -i.  This will shutdown and delete ALL VMs with matching hostname.  Use with care.")
     optional.add_option("-i", "--ignore-existing-vm", action="store_true", dest="ignore",
                      help="Ignores possible conflicts, such as existing cobbler system profiles or existing duplicate VMs.")
     optional.add_option("-t", "--template", action="store", dest="template_file", type="string",
@@ -628,10 +631,13 @@ if __name__ == "__main__":
         log.debug("Created new XenVM object: %s" % str(myvm))
         
         # warn the user before creating an identical VM
-        if myvm.is_existing_vm() and not options.ignore:
+        if myvm.is_existing_vm() and not options.ignore and not options.replace:
             log.error('%s already exists. Aborting creation of %s. To ignore this and create it anyway, use -i.' % \
                 (myvm.name, myvm.name))
         else:
+            if options.replace:
+                # this will need to shutdown and delete myvm.is_existing_vm().
+                pass
             myvm.set_ks_url(cobbler_server)
             if options.add_to_cobbler:
                 log.debug("Adding %s to cobbler" % myvm.name)
