@@ -631,13 +631,16 @@ if __name__ == "__main__":
         log.debug("Created new XenVM object: %s" % str(myvm))
         
         # warn the user before creating an identical VM
-        if myvm.is_existing_vm() and not options.ignore and not options.replace:
+        if myvm.is_existing_vm() and not options.ignore:
             log.error('%s already exists. Aborting creation of %s. To ignore this and create it anyway, use -i.' % \
                 (myvm.name, myvm.name))
         else:
             if options.replace:
                 # this will need to shutdown and delete myvm.is_existing_vm().
-                pass
+                for existing_vm in myvm.is_existing_vm()
+                    xenapi.VM.shutdown(existing_vm, True))
+                    xenapi.VM.delete(existing_vm)
+
             myvm.set_ks_url(cobbler_server)
             if options.add_to_cobbler:
                 log.debug("Adding %s to cobbler" % myvm.name)
