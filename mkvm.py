@@ -129,8 +129,9 @@ class XenVM(VM):
     userconfig = None
     sr_aggr = None
 
-    def __init__(self, name):
+    def __init__(self, name, xencache):
         VM.__init__(self, name)
+        self.xencache = xencache
 
     def _set_vmtype(self, vmtype):
     	log.debug("in _set_vmtype()")
@@ -341,36 +342,30 @@ class XenVM(VM):
 
     def is_existing_vm(self):
         """ check if a VM of the same name already exists """
-        all_vms = xenapi.VM.get_all_records()
-        
-        for vm in all_vms:
-            if all_vms[vm]['name_label'] == self.name:
-                self.existing_vm = all_vms[vm]['uuid']
+        self.existing_vm = []
+        for vm in self.xencache._get_all_vm_records():
+            if self.xencache._get_all_vm_records()[vm]['name_label'] == self.name:
+                self.existing_vm.append(vm)
         
         return self.existing_vm
 
     def _find_best_aggr(self):
         """ probe available shared storage and determine which has the most free space """
         log.debug("in find_best_aggr()")
-        log.debug('Storage UUID: %s' % self.sr_aggr)
+        log.debug('Storage UUID: %s' % self.sr_aggr())
 
-        if self.sr_aggr:
+        if self.xencache._get_shared_storage:
             sr_attrib = {}
-            for sr in self.sr_aggr.items():
+            for sr in self.xencache._get_shared_storage():
                 
-                xapisruuid = xenapi.SR.get_by_uuid(sr[1])
-                #srname = self.all_sr_records[xapisruuid]['name_label']
-                srname = xenapi.SR.get_record(xapisruuid)['name_label']
+                sruuid = xenapi.SR.get_by_name_label(sr)[0]
+                srname = sr
                 
-                log.info('Storage name found: %s' % srname)
-                
-                #srphysusage = self.all_sr_records[xapisruuid]['physical_utilisation']
-                srphysusage = xenapi.SR.get_record(xapisruuid)['physical_utilisation']
+                srphysusage = self.xencache._get_all_sr_records()[sruuid]['physical_utilisation']
                 srphysusage = float(srphysusage)
                 log.debug("%s's usage is %s" % (srname, srphysusage))
                 
-                #srphyssize = self.all_sr_records[xapisruuid]['physical_size']
-                srphyssize = xenapi.SR.get_record(xapisruuid)['physical_size']
+                srphyssize = self.xencache._get_all_sr_records()[sruuid]['physical_size']
                 srphyssize = float(srphyssize)
                 
                 log.debug("%s's size is %s" % (srname, srphyssize))
@@ -431,7 +426,7 @@ class XenCache:
     all_vm_records = None
     vm_records = None
 
-    def _find_xen_templates(self):
+    def _query_xen_templates(self):
         """ probe the xenserver for available templates to use """
         log.debug('in _find_xen_templates')
         
@@ -446,21 +441,21 @@ class XenCache:
 	log.debug(templates)
         return templates
 
-    def _find_shared_storage(self):
+    def _query_shared_storage(self):
         """ probe for available storage backends """
         log.debug('in _find_shared_storage')
 
         log.debug('scanning all available backend storage devices')
-        sr_aggr = {}
+        self.sr_aggr = {}
         for sr in self.all_sr_records:
-            
             if 'shared' in self.all_sr_records[sr] and self.all_sr_records[sr]['shared']:
                 if self.all_sr_records[sr]['type'] == 'lvmoiscsi' or self.all_sr_records[sr]['type'] == 'netapp':
-                    sr_aggr[self.all_sr_records[sr]['name_label']] = self.all_sr_records[sr]['uuid']
-        log.debug("Shared storage repositories found: %s" % sr_aggr)
-        return sr_aggr
+                    self.sr_aggr[self.all_sr_records[sr]['name_label']] = self.all_sr_records[sr]['uuid']
 
-    def _get_sr_records(self):
+        log.debug("Shared storage repositories found: %s" % self.sr_aggr)
+        return self.sr_aggr
+
+    def _query_sr_records(self):
         """ cache all the storage repository records, so we don't have to query XenServer for them multiple times """
         log.debug("in _get_sr_records()")
         
@@ -468,7 +463,7 @@ class XenCache:
         log.debug("Found SR records: %s" % sr_records)
         return sr_records
         
-    def _get_vm_records(self):
+    def _query_vm_records(self):
         """ cache all the VM records, so we don't have to query XenServer for them multiple times """
         log.debug("in _get_vm_records()")
         
@@ -476,11 +471,23 @@ class XenCache:
         log.debug("Found VM records: %s" % vm_records)
         return vm_records
 
+    def _get_shared_storage(self):
+        return self.sr_aggr
+
+    def _get_all_vm_records(self):
+        return self.all_vm_records
+
+    def _get_all_sr_records(self):
+        return self.all_sr_records
+
+    def _get_xen_templates(self):
+        return self.vm_templates
+
     def __init__(self):
-        self.all_sr_records = self._get_sr_records()
-        self.all_vm_records = self._get_vm_records()
-        self.vm_templates = self._find_xen_templates()
-        self.sr_aggr = self._find_shared_storage()
+        self.all_sr_records = self._query_sr_records()
+        self.all_vm_records = self._query_vm_records()
+        self.vm_templates = self._query_xen_templates()
+        self.sr_aggr = self._query_shared_storage()
 
 
 def get_options():
@@ -506,7 +513,7 @@ def get_options():
                      help="Username on cobbler server. Will prompt if not passed on command line.")
     optional.add_option("-p", "--password", action="store", type="string", dest="password",
                      help="Password on cobbler server. Will prompt if not passed on command line.")
-    optional.add_option("-r", "--replace", action="store_true", dest="replace", dest="ignore",
+    optional.add_option("-r", "--replace", action="store_true", dest="replace",
                      help="Replace existing VMs with same hostname.  Assumes -i.  This will shutdown and delete ALL VMs with matching hostname.  Use with care.")
     optional.add_option("-i", "--ignore-existing-vm", action="store_true", dest="ignore",
                      help="Ignores possible conflicts, such as existing cobbler system profiles or existing duplicate VMs.")
@@ -520,6 +527,8 @@ def get_options():
     if options.debug:
         log.setLevel(logging.DEBUG)
 
+    if options.replace:
+        options.ignore = True
     if not options.vmfile:
         parser.print_help()
         sys.exit(-1)
@@ -614,16 +623,16 @@ if __name__ == "__main__":
     cfg = ConfigFile(options.vmfile) # user vm config.
     tmpl = ConfigFile(options.template_file) # default config templates.
 
-    cachevar = XenCache()
+    xencache = XenCache()
 
     vmlist = []
     for vmname in cfg.configparser.sections():
         log.debug("setting up %s" % vmname)
-        myvm = XenVM(vmname)
+        myvm = XenVM(vmname, xencache)
 
         # cache some xen information so we don't have to query xenserver multiple times for the same data
-        myvm.sr_aggr = cachevar.sr_aggr
-        myvm.vm_template = cachevar.vm_templates
+        myvm.sr_aggr = xencache._get_shared_storage
+        myvm.vm_template = xencache._get_xen_templates
         
         # apply configurations from either the template or user supplied values
         myvm.configure(cfg, tmpl, cobbler_server)
@@ -637,9 +646,32 @@ if __name__ == "__main__":
         else:
             if options.replace:
                 # this will need to shutdown and delete myvm.is_existing_vm().
-                for existing_vm in myvm.is_existing_vm()
-                    xenapi.VM.shutdown(existing_vm, True))
-                    xenapi.VM.delete(existing_vm)
+                for existing_vm in myvm.is_existing_vm():
+                    vbd, vif, existing_VDIs = [], [], []
+                    existing_VBDs = xencache._get_all_vm_records()[existing_vm]['VBDs']
+                    existing_VIFs = xencache._get_all_vm_records()[existing_vm]['VIFs']
+
+                    log.debug('shutting down %s' % existing_vm) 
+                    try:
+                        xenapi.VM.hard_shutdown(existing_vm)
+                    except:
+                        pass
+
+                    for uuid in existing_VBDs:
+                        existing_VDIs.append(xenapi.VBD.get_record(uuid)['VDI'])
+                        log.debug('destroying VBD %s' % uuid)
+                        xenapi.VBD.destroy(uuid)
+
+                    for uuid in existing_VIFs:
+                        log.debug('destoying VIF %s' % uuid)
+                        xenapi.VIF.destroy(uuid)
+
+                    for uuid in existing_VDIs:
+                        log.debug('destroying VDI %s' % uuid)
+                        xenapi.VDI.destroy(uuid)
+
+                    log.debug('destroying %s' % existing_vm)
+                    xenapi.VM.destroy(existing_vm)
 
             myvm.set_ks_url(cobbler_server)
             if options.add_to_cobbler:
