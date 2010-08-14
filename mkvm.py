@@ -316,12 +316,8 @@ class XenVM(VM):
             vbd_uuid = xenapi.VBD.create(vbd)
             log.debug("VBD uuid is %s" % vbd_uuid)
 
-        # start the vm, if desired.
-        if self.autostart:
-            xenapi.VM.power_state_reset(self.vm_uuid)
-            self.start()
-        else:
-            xenapi.VM.power_state_reset(self.vm_uuid)
+        # without this, the VM is unable to change its power state    
+        xenapi.VM.power_state_reset(self.vm_uuid)
 
     def start(self):
         log.info('Booting %s' % self.name)
@@ -382,6 +378,8 @@ class XenVM(VM):
             log.error("Unable to determine storage repository")
             return None
 
+    def vm_uuid(self):
+        return self.vm_uuid
 
 class ConfigFile:
     filename = None
@@ -561,6 +559,43 @@ def get_cobbler_server(cblr):
         traceback.print_exc()
         sys.exit(-1)
 
+def vm_purge(xencache, xenvm)
+    """ remove VM and all it assets """
+    log.debug("in vm_purge()")
+
+    # protect certain VMs
+    if 'prod' in myvm.fqdn:
+        # stubbing this off for now, but if true, should not execute following code
+        pass
+
+    for existing_vm in myvm.is_existing_vm():
+        vbd, vif, existing_VDIs = [], [], []
+        existing_VBDs = xencache._get_all_vm_records()[existing_vm]['VBDs']
+        existing_VIFs = xencache._get_all_vm_records()[existing_vm]['VIFs']
+
+        log.debug('shutting down %s' % existing_vm)
+        try:
+            xenapi.VM.hard_shutdown(existing_vm)
+        except:
+            pass
+
+        for uuid in existing_VBDs:
+            existing_VDIs.append(xenapi.VBD.get_record(uuid)['VDI'])
+            log.debug('destroying VBD %s' % uuid)
+            xenapi.VBD.destroy(uuid)
+
+        for uuid in existing_VIFs:
+            log.debug('destoying VIF %s' % uuid)
+            xenapi.VIF.destroy(uuid)
+
+        for uuid in existing_VDIs:
+            log.debug('destroying VDI %s' % uuid)
+            xenapi.VDI.destroy(uuid)
+
+        log.debug('destroying %s' % existing_vm)
+        xenapi.VM.destroy(existing_vm)
+    
+
 def add_to_cobbler(cobbler_server, token, xenvm):
     """ add the VM to cobbler """
     log.debug("in add_to_cobbler()")
@@ -630,7 +665,7 @@ if __name__ == "__main__":
         log.debug("setting up %s" % vmname)
         myvm = XenVM(vmname, xencache)
 
-        # cache some xen information so we don't have to query xenserver multiple times for the same data
+        # grab some cached info
         myvm.sr_aggr = xencache._get_shared_storage
         myvm.vm_template = xencache._get_xen_templates
         
@@ -644,42 +679,18 @@ if __name__ == "__main__":
             log.error('%s already exists. Aborting creation of %s. To ignore this and create it anyway, use -i.' % \
                 (myvm.name, myvm.name))
         else:
+            log.debug("remove %s per users request" % myvm.name)
             if options.replace:
-                # this will need to shutdown and delete myvm.is_existing_vm().
-                for existing_vm in myvm.is_existing_vm():
-                    vbd, vif, existing_VDIs = [], [], []
-                    existing_VBDs = xencache._get_all_vm_records()[existing_vm]['VBDs']
-                    existing_VIFs = xencache._get_all_vm_records()[existing_vm]['VIFs']
+                # this will shutdown and delete myvm.is_existing_vm().
+                vm_purge(xencache, myvm)
 
-                    log.debug('shutting down %s' % existing_vm) 
-                    try:
-                        xenapi.VM.hard_shutdown(existing_vm)
-                    except:
-                        pass
-
-                    for uuid in existing_VBDs:
-                        existing_VDIs.append(xenapi.VBD.get_record(uuid)['VDI'])
-                        log.debug('destroying VBD %s' % uuid)
-                        xenapi.VBD.destroy(uuid)
-
-                    for uuid in existing_VIFs:
-                        log.debug('destoying VIF %s' % uuid)
-                        xenapi.VIF.destroy(uuid)
-
-                    for uuid in existing_VDIs:
-                        log.debug('destroying VDI %s' % uuid)
-                        xenapi.VDI.destroy(uuid)
-
-                    log.debug('destroying %s' % existing_vm)
-                    xenapi.VM.destroy(existing_vm)
-
+            # due to the order of events, we need to setup the cobbler profile and grab the kickstart before we go any further
             myvm.set_ks_url(cobbler_server)
+
             if options.add_to_cobbler:
                 log.debug("Adding %s to cobbler" % myvm.name)
                 # add the new system to cobbler
                 install_repo = add_to_cobbler(cobbler_server, token, myvm)
-            if options.autostart:
-                myvm.autostart = True
             
             # create the actual VM.
             myvm.create()
@@ -687,3 +698,6 @@ if __name__ == "__main__":
             # add the install repository location for kickstart
             if options.add_to_cobbler:
                 xenapi.VM.add_to_other_config(myvm.vm_uuid, 'install-repository', install_repo)
+
+            if options.autostart:
+                myvm.start(mv.vm_uuid)
