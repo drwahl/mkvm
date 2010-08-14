@@ -700,4 +700,4 @@ if __name__ == "__main__":
                 xenapi.VM.add_to_other_config(myvm.vm_uuid, 'install-repository', install_repo)
 
             if options.autostart:
-                myvm.start(mv.vm_uuid)
+                myvm.start(myvm.vm_uuid)
