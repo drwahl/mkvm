@@ -134,7 +134,7 @@ class XenVM(VM):
         self.xencache = xencache
 
     def _set_vmtype(self, vmtype):
-    	log.debug("in _set_vmtype()")
+        log.debug("in _set_vmtype()")
         self.cobbler_profile = self.templateconfig.get_item('profile', vmtype)
         self.mgmt_classes = self.templateconfig.get_item('mgmt_classes', vmtype)
         self.hddsize = int(self.templateconfig.get_item('hddsize', vmtype)) * self._gig
@@ -145,9 +145,9 @@ class XenVM(VM):
         self.usernics = self.templateconfig.get_item('nics', vmtype)
 
     def _set_user_config(self):
-    	log.debug("in _set_user_config()")
+        log.debug("in _set_user_config()")
 
-    	# configure vm using default settings.
+        # configure vm using default settings.
         vmtype = self.userconfig.get_item("type", self.name)
         if vmtype:
             self.vmtype = vmtype
@@ -206,8 +206,8 @@ class XenVM(VM):
                 }
 
     def configure(self, userconfig, templateconfig, cobbler_server):
-    	log.debug("in configure()")
-    	self.userconfig = userconfig
+        log.debug("in configure()")
+        self.userconfig = userconfig
         self.templateconfig = templateconfig
         self.cobbler_server = cobbler_server
         self.fqdn = self.userconfig.get_item('fqdn', self.name)
@@ -436,7 +436,7 @@ class XenCache:
                     uuid_name_label = self.all_vm_records[uuid]['name_label']
                     templates = { uuid_name_label : uuid }
         templates = {}
-	log.debug(templates)
+        log.debug(templates)
         return templates
 
     def _query_shared_storage(self):
@@ -559,7 +559,7 @@ def get_cobbler_server(cblr):
         traceback.print_exc()
         sys.exit(-1)
 
-def vm_purge(xencache, xenvm)
+def vm_purge(xencache, xenvm):
     """ remove VM and all it assets """
     log.debug("in vm_purge()")
 
