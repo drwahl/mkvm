@@ -716,6 +716,3 @@ if __name__ == "__main__":
             # add the install repository location for kickstart
             if options.add_to_cobbler:
                 xenapi.VM.add_to_other_config(myvm.vm_uuid, 'install-repository', install_repo)
-            else:
-                install_repo = _grab_repo(cobbler_server, token, myvm)
-                xenapi.VM.add_to_other_config(myvm.vm_uuid, 'install-repository', install_repo)
