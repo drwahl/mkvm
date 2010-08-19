@@ -259,10 +259,21 @@ class XenVM(VM):
         else:
             xenapi.VM.set_name_description(self.vm_uuid, "Created using mkvm.py. " +strftime("%Y-%m-%d %H:%M:%S"))
 
+        network_uuid = ''
         network_records = xenapi.network.get_all_records()
+        # try to find the default network
         for k in network_records:
             if "other_config" in network_records[k] and 'automatic' in network_records[k]['other_config'] and network_records[k]['other_config']['automatic'] == 'true':
                 network_uuid = k
+
+        # if the default network can't be found, pick one at 'random'
+        if not network_uuid:
+            for k in network_records:
+                network_uuid = k
+
+        # if none of the above work, we will have not network connectvitivy
+        if not network_uuid:
+            network_uuid = True
 
         log.debug('network uuid is %s' % network_uuid)
 
@@ -296,8 +307,12 @@ class XenVM(VM):
                     'type' : 'system',
                     'other_config': { 'location': '/dev/xvda' } ,
                   }
+
             log.debug("VDI configuration: %s" % vdi)
-            vdi_uuid = xenapi.VDI.create(vdi)
+            try:
+                vdi_uuid = xenapi.VDI.create(vdi)
+            except:
+                print "Unable to create disk"
             log.debug("VDI uuid is %s" % vdi_uuid)
             
             # create a VBD to plug the VDI into the VM
