@@ -604,6 +604,20 @@ def add_to_cobbler(cobbler_server, token, xenvm):
     
     return install_repo
     
+def _grab_repo(cobbler_server, token, xenvm):
+    """ grab the cobbler repo.  this will be moved into a class later """
+    # grab the install repo
+    sys_rendered = cobbler.get_system_for_koan(xenvm.fqdn)
+    for x in sys_rendered:
+        if 'source_repo' in x:
+            for y in sys_rendered[x]:
+                for z in y:
+                    if z.endswith('.repo'):
+                        pass
+                    else:
+                        install_repo = z.replace("@@http_server@@", cobbler_server)
+    return install_repo
+
 if __name__ == "__main__":
     log.debug("in __main__()")
     
@@ -701,4 +715,7 @@ if __name__ == "__main__":
             
             # add the install repository location for kickstart
             if options.add_to_cobbler:
+                xenapi.VM.add_to_other_config(myvm.vm_uuid, 'install-repository', install_repo)
+            else:
+                install_repo = _grab_repo(cobbler_server, token, myvm)
                 xenapi.VM.add_to_other_config(myvm.vm_uuid, 'install-repository', install_repo)
