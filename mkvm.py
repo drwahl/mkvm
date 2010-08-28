@@ -106,9 +106,9 @@ class VM:
         return """
 %s (%s):
     vcpus: %i
-    vram: %i
+    vram: %i (bytes)
     nics: %s
-    hddsize: %s
+    hddsize: %s (bytes)
     profile: %s
     mgmt_classes: %s
     storage: %s
@@ -406,6 +406,7 @@ class XenVM(VM):
         """ return FQDN of the VM """
         return self.fqdn
 
+
 class ConfigFile:
     filename = None
     configparser = None
@@ -513,63 +514,6 @@ class XenCache:
         self.sr_aggr = self._query_shared_storage()
 
 
-def get_options():
-    """ command-line options """
-    log.debug("in get_options()")
-
-    usage = "usage: %prog -f <FILE> [options]"
-    OptionParser = optparse.OptionParser
-    parser = OptionParser(usage)
-
-    required = optparse.OptionGroup(parser, "Required")
-    optional = optparse.OptionGroup(parser, "Optional")
-
-    required.add_option("-f", "--file", dest="vmfile", action="store", type="string",
-                     help="Use FILE as input file.", metavar="FILE")
-    optional.add_option("-v", "--verbose", action="store_true", dest="debug", default=False,
-                     help="Enable verbose output.")
-    optional.add_option("-a", "--autostart", action="store_true", dest="autostart",
-                     help="Create a VM and send it the boot signal (-s to keep it off).")
-    optional.add_option("-c", "--skip-cobbler", action="store_false", dest="add_to_cobbler", default=True,
-                     help="Don't add a VM to cobbler. By default mkvm adds a new system to Cobbler.")
-    optional.add_option("-u", "--username", action="store", type="string", dest="cblr_username",
-                     help="Username on cobbler server. Will prompt if not passed on command line.")
-    optional.add_option("-p", "--password", action="store", type="string", dest="cblr_password",
-                     help="Password on cobbler server. Will prompt if not passed on command line.")
-    optional.add_option("-r", "--replace", action="store_true", dest="replace",
-                     help="Replace existing VMs with same hostname.  Assumes -i.  This will shutdown and delete ALL VMs with matching hostname.  Use with care.")
-    optional.add_option("-i", "--ignore-existing-vm", action="store_true", dest="ignore",
-                     help="Ignores possible conflicts, such as existing cobbler system profiles or existing duplicate VMs.")
-    optional.add_option("-t", "--template", action="store", dest="template_file", type="string",
-                     help="Load templates from the given file.  Default: /etc/mkvm/templates")
-
-    parser.add_option_group(required)
-    parser.add_option_group(optional)
-    options, args = parser.parse_args()
-
-    if options.debug:
-        log.setLevel(logging.DEBUG)
-
-    if options.replace:
-        options.ignore = True
-    if not options.vmfile:
-        parser.print_help()
-        sys.exit(-1)
-
-    if options.add_to_cobbler:
-        if not options.cblr_username:
-            options.cblr_username = raw_input('Cobbler Username:')
-        if not options.cblr_password:
-            options.cblr_password = getpass.getpass('Cobbler Password:')
-
-    if not options.vmfile:
-        options.vmfile = default_config_file
-
-    if not options.template_file:
-        options.template_file = default_template_file
-
-    return options
-
 class cobbler():
     """ everything related to cobbler """
     log.debug("in cobbler()")
@@ -629,8 +573,11 @@ class cobbler():
         self.cobbler.modify_system(self.vm_id, 'modify_interface', xenvm.nics['eth0'], self.token)
         self.cobbler.save_system(self.vm_id, self.token)
 
+    def purge(self, myvm):
+        """ remove cobbler profile. this assumes that the cobbler profile matches the FQDN of the VM """
+        pass
+    
     def __init__(self, cobbler_server, options):
-
         # make initial cobbler connection
         self.cobbler = self.get_cobbler_server(cobbler_server)
         
@@ -640,6 +587,132 @@ class cobbler():
         except xmlrpclib.Fault, e:
             log.error(e)
             sys.exit(-1)
+
+def purge_vm(myvm, options, cobbler):
+    """ this will shutdown and delete any existing VMs with the same xencenter name """
+    log.debug("in purge_vm")
+    log.info("destroying VM %s per your request." % myvm.name)
+    
+    if not options.skip_countdown:
+        print ''
+        print "DESTROYING %s" % myvm.name
+        print "##### YOU HAVE 3 SECONDS TO INTERUPT THIS WITH CTRL+C #####"
+        time.sleep(3)
+        
+    for existing_vm in myvm.is_existing_vm():
+        vbd, vif, existing_VDIs = [], [], []
+        existing_VBDs = xencache._get_all_vm_records()[existing_vm]['VBDs']
+        existing_VIFs = xencache._get_all_vm_records()[existing_vm]['VIFs']
+
+        log.debug('sending power off command to VM %s' % existing_vm) 
+        try:
+            log.info("powering off %s" % existing_vm)
+            xenapi.VM.hard_shutdown(existing_vm)
+        except:
+            log.info("power off command failed. Assuming VM is already shutdown...")
+            pass
+
+        for uuid in existing_VBDs:
+            existing_VDIs.append(xenapi.VBD.get_record(uuid)['VDI'])
+            log.debug('sending destroy command for VBD %s' % uuid)
+            try:
+                xenapi.VBD.destroy(uuid)
+            except:
+                log.info("VBD destroy command failed. Assuming VBD is already destroyed...")
+                pass
+
+        for uuid in existing_VIFs:
+            log.debug('sending destroy command for VIF %s' % uuid)
+            try:
+                xenapi.VIF.destroy(uuid)
+            except:
+                log.info("VIF destroy command failed. Assuming VIF is already destroyed...")
+                pass
+
+        for uuid in existing_VDIs:
+            log.debug('sending destroy command for VDI %s' % uuid)
+            try:
+                xenapi.VDI.destroy(uuid)
+            except:
+                log.info("VDI destroy command failed.  Assuming VDI is already destroyed...")
+                pass
+
+        log.debug('sending destroy command for VM %s' % existing_vm)
+        try:
+            xenapi.VM.destroy(existing_vm)
+        except:
+            log.info("VM destroy command failed.  Assuming VM is already destroyed...")
+            pass
+
+        if options.add_to_cobbler:
+            log.info("removing cobbler profile for %s" % myvm.fqdn)
+            #cobbler.purge(myvm)
+            log.info("VM (%s) was destroyed and its system profile (%s) was removed from cobbler" % (myvm.name, myvm.fqdn))
+        else:
+            log.info("VM (%s) was destroyed" % myvm.name)
+
+
+def get_options():
+    """ command-line options """
+    log.debug("in get_options()")
+
+    usage = "usage: %prog -f <FILE> [options]"
+    OptionParser = optparse.OptionParser
+    parser = OptionParser(usage)
+
+    required = optparse.OptionGroup(parser, "Required")
+    optional = optparse.OptionGroup(parser, "Optional")
+
+    required.add_option("-f", "--file", dest="vmfile", action="store", type="string",
+                     help="Use FILE as input file.", metavar="FILE")
+    optional.add_option("-v", "--verbose", action="store_true", dest="debug", default=False,
+                     help="Enable verbose output.")
+    optional.add_option("-a", "--autostart", action="store_true", dest="autostart",
+                     help="Create a VM and send it the boot signal (-s to keep it off).")
+    optional.add_option("-c", "--skip-cobbler", action="store_false", dest="add_to_cobbler", default=True,
+                     help="Don't add a VM to cobbler. By default mkvm adds a new system to Cobbler.")
+    optional.add_option("-u", "--username", action="store", type="string", dest="cblr_username",
+                     help="Username on cobbler server. Will prompt if not passed on command line.")
+    optional.add_option("-p", "--password", action="store", type="string", dest="cblr_password",
+                     help="Password on cobbler server. Will prompt if not passed on command line.")
+    optional.add_option("-r", "--replace", action="store_true", dest="replace",
+                     help="Replace existing VMs with same hostname.  Assumes -i.  This will shutdown and delete ALL VMs with matching hostname.  Use with care.")
+    optional.add_option("-i", "--ignore-existing-vm", action="store_true", dest="ignore",
+                     help="Ignores possible conflicts, such as existing cobbler system profiles or existing duplicate VMs.")
+    optional.add_option("-d", "--destoy", action="store_true", dest="destroy",
+                     help="Destoy VMs with matching names.  This is totally destructive, so use with care.")
+    optional.add_option("-s", "--skip-countdown", action="store_true", dest="skip_countdown",
+                     help="Skips the countdown before destroying VM.  Use this with -d to quickly destroy VMs.")
+    optional.add_option("-t", "--template", action="store", dest="template_file", type="string",
+                     help="Load templates from the given file.  Default: /etc/mkvm/templates")
+
+    parser.add_option_group(required)
+    parser.add_option_group(optional)
+    options, args = parser.parse_args()
+
+    if options.debug:
+        log.setLevel(logging.DEBUG)
+
+    if options.replace:
+        options.ignore = True
+    if not options.vmfile:
+        parser.print_help()
+        sys.exit(-1)
+
+    if options.add_to_cobbler:
+        if not options.cblr_username:
+            options.cblr_username = raw_input('Cobbler Username:')
+        if not options.cblr_password:
+            options.cblr_password = getpass.getpass('Cobbler Password:')
+
+    if not options.vmfile:
+        options.vmfile = default_config_file
+
+    if not options.template_file:
+        options.template_file = default_template_file
+
+    return options
+
 
 if __name__ == "__main__":
     log.debug("in __main__()")
@@ -661,10 +734,11 @@ if __name__ == "__main__":
     xensession = XenAPI.Session(xenserver)
     xensession.login_with_password(xenserver_username, xenserver_password)
     xenapi = xensession.xenapi
-    
+
     cobbler_server = default_configs.get_item('cobbler_server')
-    # connect to cobbler's xmlrpc API
-    cobbler = cobbler(cobbler_server, options)
+    if options.add_to_cobbler:
+        # connect to cobbler's xmlrpc API
+        cobbler = cobbler(cobbler_server, options)
 
     cfg = ConfigFile(options.vmfile) # user vm config.
     tmpl = ConfigFile(options.template_file) # default config templates.
@@ -684,58 +758,21 @@ if __name__ == "__main__":
         myvm.configure(cfg, tmpl, cobbler_server)
 
         log.debug("Created new XenVM object: %s" % str(myvm))
+
+        # if invoked to delete VMs, run through the input file and delete all matches
+        if options.destroy:
+            purge_vm(myvm, options, cobbler)
+            continue
         
         # warn the user before creating an identical VM
         if myvm.is_existing_vm() and not options.ignore:
             log.error('%s already exists. Aborting creation of %s. To ignore this and create it anyway, use -i. To REPLACE (destroy the existing and build a new one) this VM, use -r.' % \
                 (myvm.name, myvm.name))
+            time.sleep(2)
+            continue
         else:
             if options.replace:
-                # this will need to shutdown and delete myvm.is_existing_vm().
-                for existing_vm in myvm.is_existing_vm():
-                    vbd, vif, existing_VDIs = [], [], []
-                    existing_VBDs = xencache._get_all_vm_records()[existing_vm]['VBDs']
-                    existing_VIFs = xencache._get_all_vm_records()[existing_vm]['VIFs']
-
-                    log.debug('shutting down %s' % existing_vm) 
-                    try:
-                        log.info("powering off %s" % existing_vm)
-                        xenapi.VM.hard_shutdown(existing_vm)
-                    except:
-                        log.info("power off command failed. Assuming VM is already shutdown...")
-                        pass
-
-                    for uuid in existing_VBDs:
-                        existing_VDIs.append(xenapi.VBD.get_record(uuid)['VDI'])
-                        log.debug('sending destroy command for VBD %s' % uuid)
-                        try:
-                            xenapi.VBD.destroy(uuid)
-                        except:
-                            log.info("VBD destroy command failed. Assuming VBD is already destroyed...")
-                            pass
-
-                    for uuid in existing_VIFs:
-                        log.debug('sending destoy command for VIF %s' % uuid)
-                        try:
-                            xenapi.VIF.destroy(uuid)
-                        except:
-                            log.info("VIF destroy command failed. Assuming VIF is already destroyed...")
-                            pass
-
-                    for uuid in existing_VDIs:
-                        log.debug('sending destroy command for VDI %s' % uuid)
-                        try:
-                            xenapi.VDI.destroy(uuid)
-                        except:
-                            log.info("VDI destroy command failed.  Assuming VDI is already destroyed...")
-                            pass
-
-                    log.debug('sending destroy command for VM %s' % existing_vm)
-                    try:
-                        xenapi.VM.destroy(existing_vm)
-                    except:
-                        log.info("VM destroy command failed.  Assuming VM is already destroyed...")
-                        pass
+                purge_vm(myvm, options, cobbler)
 
             myvm.set_ks_url(cobbler_server)
             if options.add_to_cobbler:
