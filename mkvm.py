@@ -134,7 +134,7 @@ class XenVM(VM):
         self.xencache = xencache
 
     def _set_vmtype(self, vmtype):
-        log.debug("in _set_vmtype()")
+    	log.debug("in _set_vmtype()")
         self.cobbler_profile = self.templateconfig.get_item('profile', vmtype)
         self.mgmt_classes = self.templateconfig.get_item('mgmt_classes', vmtype)
         self.hddsize = int(self.templateconfig.get_item('hddsize', vmtype)) * self._gig
@@ -145,9 +145,9 @@ class XenVM(VM):
         self.usernics = self.templateconfig.get_item('nics', vmtype)
 
     def _set_user_config(self):
-        log.debug("in _set_user_config()")
+    	log.debug("in _set_user_config()")
 
-        # configure vm using default settings.
+    	# configure vm using default settings.
         vmtype = self.userconfig.get_item("type", self.name)
         if vmtype:
             self.vmtype = vmtype
@@ -206,8 +206,8 @@ class XenVM(VM):
                 }
 
     def configure(self, userconfig, templateconfig, cobbler_server):
-        log.debug("in configure()")
-        self.userconfig = userconfig
+    	log.debug("in configure()")
+    	self.userconfig = userconfig
         self.templateconfig = templateconfig
         self.cobbler_server = cobbler_server
         self.fqdn = self.userconfig.get_item('fqdn', self.name)
@@ -259,10 +259,21 @@ class XenVM(VM):
         else:
             xenapi.VM.set_name_description(self.vm_uuid, "Created using mkvm.py. " +strftime("%Y-%m-%d %H:%M:%S"))
 
+        network_uuid = ''
         network_records = xenapi.network.get_all_records()
+        # try to find the default network
         for k in network_records:
             if "other_config" in network_records[k] and 'automatic' in network_records[k]['other_config'] and network_records[k]['other_config']['automatic'] == 'true':
                 network_uuid = k
+
+        # if the default network can't be found, pick one at 'random'
+        if not network_uuid:
+            for k in network_records:
+                network_uuid = k
+
+        # if none of the above work, we will have not network connectvitivy
+        if not network_uuid:
+            network_uuid = True
 
         log.debug('network uuid is %s' % network_uuid)
 
@@ -276,7 +287,8 @@ class XenVM(VM):
                 'qos_algorithm_params': {},
                 'other_config': {},
               }
-        xenapi.VIF.create(vif)
+        vif_uuid = xenapi.VIF.create(vif)
+        self.mac_addr = xenapi.VIF.get_record(vif_uuid)['MAC']
 
         #resize the disk if the template created one for the vm
         if xenapi.VM.get_VBDs(self.vm_uuid):
@@ -296,8 +308,12 @@ class XenVM(VM):
                     'type' : 'system',
                     'other_config': { 'location': '/dev/xvda' } ,
                   }
+
             log.debug("VDI configuration: %s" % vdi)
-            vdi_uuid = xenapi.VDI.create(vdi)
+            try:
+                vdi_uuid = xenapi.VDI.create(vdi)
+            except:
+                print "Unable to create disk"
             log.debug("VDI uuid is %s" % vdi_uuid)
             
             # create a VBD to plug the VDI into the VM
@@ -316,8 +332,12 @@ class XenVM(VM):
             vbd_uuid = xenapi.VBD.create(vbd)
             log.debug("VBD uuid is %s" % vbd_uuid)
 
-        # without this, the VM is unable to change its power state    
-        xenapi.VM.power_state_reset(self.vm_uuid)
+        # start the vm, if desired.
+        if self.autostart:
+            xenapi.VM.power_state_reset(self.vm_uuid)
+            self.start()
+        else:
+            xenapi.VM.power_state_reset(self.vm_uuid)
 
     def start(self):
         log.info('Booting %s' % self.name)
@@ -378,8 +398,11 @@ class XenVM(VM):
             log.error("Unable to determine storage repository")
             return None
 
-    def vm_uuid(self):
-        return self.vm_uuid
+    def mac_addr():
+        """ return the mac address of the VM """
+
+        return self.mac_addr
+
 
 class ConfigFile:
     filename = None
@@ -436,7 +459,7 @@ class XenCache:
                     uuid_name_label = self.all_vm_records[uuid]['name_label']
                     templates = { uuid_name_label : uuid }
         templates = {}
-        log.debug(templates)
+	log.debug(templates)
         return templates
 
     def _query_shared_storage(self):
@@ -545,85 +568,72 @@ def get_options():
 
     return options
 
-def get_cobbler_server(cblr):
-    """ connect to a cobbler xmlrpc api """
-    log.debug("in _get_cobbler_server()")
-    if cblr.startswith('http'):
-        url = cblr
-    else:
-        url = "http://%s/cobbler_api" % cblr
-    try:
-        server = xmlrpclib.Server(url)
-        return server
-    except:
-        traceback.print_exc()
-        sys.exit(-1)
+class cobbler():
+    """ everything related to cobbler """
 
-def vm_purge(xencache, xenvm):
-    """ remove VM and all it assets """
-    log.debug("in vm_purge()")
-
-    # protect certain VMs
-    if 'prod' in myvm.fqdn:
-        # stubbing this off for now, but if true, should not execute following code
-        pass
-
-    for existing_vm in myvm.is_existing_vm():
-        vbd, vif, existing_VDIs = [], [], []
-        existing_VBDs = xencache._get_all_vm_records()[existing_vm]['VBDs']
-        existing_VIFs = xencache._get_all_vm_records()[existing_vm]['VIFs']
-
-        log.debug('shutting down %s' % existing_vm)
+   
+    def get_cobbler_server(cblr):
+        """ connect to a cobbler xmlrpc api """
+        log.debug("in _get_cobbler_server()")
+        if cblr.startswith('http'):
+            url = cblr
+        else:
+            url = "http://%s/cobbler_api" % cblr
         try:
-            xenapi.VM.hard_shutdown(existing_vm)
+            server = xmlrpclib.Server(url)
+            return server
         except:
-            pass
+            traceback.print_exc()
+            sys.exit(-1)
 
-        for uuid in existing_VBDs:
-            existing_VDIs.append(xenapi.VBD.get_record(uuid)['VDI'])
-            log.debug('destroying VBD %s' % uuid)
-            xenapi.VBD.destroy(uuid)
+    def add_to_cobbler(cobbler_server, token, xenvm):
+        """ add the VM to cobbler """
+        log.debug("in add_to_cobbler()")
 
-        for uuid in existing_VIFs:
-            log.debug('destoying VIF %s' % uuid)
-            xenapi.VIF.destroy(uuid)
+        # add new system
+        vm_id = cobbler.new_system(token)
+        cobbler.modify_system(vm_id, 'name', xenvm.fqdn, token)
+        cobbler.modify_system(vm_id, 'hostname', xenvm.fqdn, token)
+        cobbler.modify_system(vm_id, 'profile', xenvm.cobbler_profile, token)
+        cobbler.modify_system(vm_id, 'ksmeta', xenvm.ksmeta, token)
+        cobbler.modify_system(vm_id, 'mgmt_classes', xenvm.mgmt_classes, token)
+        cobbler.modify_system(vm_id, 'modify_interface', xenvm.nics['eth0'], token)
+        cobbler.modify_system(vm_id, 'comment', 'Created by ' + options.username + ' using mkvm.py. ' + strftime("%Y-%m-%d %H:%M:%S"), token)
+        cobbler.save_system(vm_id, token)
 
-        for uuid in existing_VDIs:
-            log.debug('destroying VDI %s' % uuid)
-            xenapi.VDI.destroy(uuid)
+    def query_install_repo():
+        # grab the install repo
+        sys_rendered = cobbler.get_system_for_koan(xenvm.fqdn)
+        for x in sys_rendered:
+            if 'source_repo' in x:
+                for y in sys_rendered[x]:
+                    for z in y:
+                        if z.endswith('.repo'):
+                            pass
+                        else:
+                            install_repo = z.replace("@@http_server@@", cobbler_server)
 
-        log.debug('destroying %s' % existing_vm)
-        xenapi.VM.destroy(existing_vm)
+        return install_repo
     
+    def grab_repo(cobbler_server, token, xenvm):
+        """ grab the cobbler repo.  this will be moved into a class later """
+        # grab the install repo
+        sys_rendered = cobbler.get_system_for_koan(xenvm.fqdn)
+        for x in sys_rendered:
+            if 'source_repo' in x:
+                for y in sys_rendered[x]:
+                    for z in y:
+                        if z.endswith('.repo'):
+                            pass
+                        else:
+                            install_repo = z.replace("@@http_server@@", cobbler_server)
+        return install_repo
 
-def add_to_cobbler(cobbler_server, token, xenvm):
-    """ add the VM to cobbler """
-    log.debug("in add_to_cobbler()")
+    def add_mac_to_cobbler(cobbler_server, token, xenvm):
+        """ add the MAC address to cobbler.  this will be moved into a class later """
+        vm_id = cobbler.get_system(xenvm.fqdn)
+        cobbler.modify_system(vm_id, 'modify_interface', xenvm.nics['eth0'], token)
 
-    # add new system
-    vm_id = cobbler.new_system(token)
-    cobbler.modify_system(vm_id, 'name', xenvm.fqdn, token)
-    cobbler.modify_system(vm_id, 'hostname', xenvm.fqdn, token)
-    cobbler.modify_system(vm_id, 'profile', xenvm.cobbler_profile, token)
-    cobbler.modify_system(vm_id, 'ksmeta', xenvm.ksmeta, token)
-    cobbler.modify_system(vm_id, 'mgmt_classes', xenvm.mgmt_classes, token)
-    cobbler.modify_system(vm_id, 'modify_interface', xenvm.nics['eth0'], token)
-    cobbler.modify_system(vm_id, 'comment', 'Created by ' + options.username + ' using mkvm.py. ' + strftime("%Y-%m-%d %H:%M:%S"), token)
-    cobbler.save_system(vm_id, token)
-
-    # grab the install repo
-    sys_rendered = cobbler.get_system_for_koan(xenvm.fqdn)
-    for x in sys_rendered:
-        if 'source_repo' in x:
-            for y in sys_rendered[x]:
-                for z in y:
-                    if z.endswith('.repo'):
-                        pass
-                    else:
-                        install_repo = z.replace("@@http_server@@", cobbler_server)
-    
-    return install_repo
-    
 if __name__ == "__main__":
     log.debug("in __main__()")
     
@@ -665,7 +675,7 @@ if __name__ == "__main__":
         log.debug("setting up %s" % vmname)
         myvm = XenVM(vmname, xencache)
 
-        # grab some cached info
+        # cache some xen information so we don't have to query xenserver multiple times for the same data
         myvm.sr_aggr = xencache._get_shared_storage
         myvm.vm_template = xencache._get_xen_templates
         
@@ -679,18 +689,42 @@ if __name__ == "__main__":
             log.error('%s already exists. Aborting creation of %s. To ignore this and create it anyway, use -i.' % \
                 (myvm.name, myvm.name))
         else:
-            log.debug("remove %s per users request" % myvm.name)
             if options.replace:
-                # this will shutdown and delete myvm.is_existing_vm().
-                vm_purge(xencache, myvm)
+                # this will need to shutdown and delete myvm.is_existing_vm().
+                for existing_vm in myvm.is_existing_vm():
+                    vbd, vif, existing_VDIs = [], [], []
+                    existing_VBDs = xencache._get_all_vm_records()[existing_vm]['VBDs']
+                    existing_VIFs = xencache._get_all_vm_records()[existing_vm]['VIFs']
 
-            # due to the order of events, we need to setup the cobbler profile and grab the kickstart before we go any further
+                    log.debug('shutting down %s' % existing_vm) 
+                    try:
+                        xenapi.VM.hard_shutdown(existing_vm)
+                    except:
+                        pass
+
+                    for uuid in existing_VBDs:
+                        existing_VDIs.append(xenapi.VBD.get_record(uuid)['VDI'])
+                        log.debug('destroying VBD %s' % uuid)
+                        xenapi.VBD.destroy(uuid)
+
+                    for uuid in existing_VIFs:
+                        log.debug('destoying VIF %s' % uuid)
+                        xenapi.VIF.destroy(uuid)
+
+                    for uuid in existing_VDIs:
+                        log.debug('destroying VDI %s' % uuid)
+                        xenapi.VDI.destroy(uuid)
+
+                    log.debug('destroying %s' % existing_vm)
+                    xenapi.VM.destroy(existing_vm)
+
             myvm.set_ks_url(cobbler_server)
-
             if options.add_to_cobbler:
                 log.debug("Adding %s to cobbler" % myvm.name)
                 # add the new system to cobbler
                 install_repo = add_to_cobbler(cobbler_server, token, myvm)
+            if options.autostart:
+                myvm.autostart = True
             
             # create the actual VM.
             myvm.create()
@@ -698,6 +732,8 @@ if __name__ == "__main__":
             # add the install repository location for kickstart
             if options.add_to_cobbler:
                 xenapi.VM.add_to_other_config(myvm.vm_uuid, 'install-repository', install_repo)
+                myvm.nics['eth0']['macaddress-eth0'] = myvm.mac_addr
+                _add_mac_to_cobbler(cobbler_server, token, myvm)
 
             if options.autostart:
-                myvm.start(myvm.vm_uuid)
+                xenapi.VM.start(myvm.vm_uuid)
