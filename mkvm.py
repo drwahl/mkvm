@@ -257,7 +257,7 @@ class XenVM(VM):
         if options.cblr_username:
             xenapi.VM.set_name_description(self.vm_uuid, "Created by " + str(options.cblr_username) + " using mkvm.py. " + strftime("%Y-%m-%d %H:%M:%S"))
         else:
-            xenapi.VM.set_name_description(self.vm_uuid, "Created using mkvm.py. " +strftime("%Y-%m-%d %H:%M:%S"))
+            xenapi.VM.set_name_description(self.vm_uuid, "Created by " + getpass.getuser() + " using mkvm.py. " +strftime("%Y-%m-%d %H:%M:%S"))
 
         network_uuid = ''
         network_records = xenapi.network.get_all_records()
@@ -580,6 +580,7 @@ class cobbler():
     def __init__(self, cobbler_server, options):
         # make initial cobbler connection
         self.cobbler = self.get_cobbler_server(cobbler_server)
+        self.cobbler_server = cobbler_server
         
         # try to login to the cobbler server
         try:
