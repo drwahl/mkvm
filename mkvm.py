@@ -580,6 +580,7 @@ class cobbler():
     def __init__(self, cobbler_server, options):
         # make initial cobbler connection
         self.cobbler = self.get_cobbler_server(cobbler_server)
+        self.cobbler_server = cobbler_server
         
         # try to login to the cobbler server
         try:
