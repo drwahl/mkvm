@@ -257,7 +257,7 @@ class XenVM(VM):
         if options.username:
             xenapi.VM.set_name_description(self.vm_uuid, "Created by " + str(options.username) + " using mkvm.py. " + strftime("%Y-%m-%d %H:%M:%S"))
         else:
-            xenapi.VM.set_name_description(self.vm_uuid, "Created using mkvm.py. " +strftime("%Y-%m-%d %H:%M:%S"))
+            xenapi.VM.set_name_description(self.vm_uuid, "Created by " + getpass.getuser() + " using mkvm.py. " +strftime("%Y-%m-%d %H:%M:%S"))
 
         network_uuid = ''
         network_records = xenapi.network.get_all_records()
