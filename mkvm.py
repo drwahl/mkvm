@@ -287,7 +287,7 @@ class XenVM(VM):
         if not network_uuid:
             network_uuid = True
 
-        log.debug('network uuid is %s' % network_uuid)
+        log.info('network uuid is %s' % network_uuid)
 
         # create the VIF (network card)
         vif = { 'device': '0',
@@ -326,7 +326,7 @@ class XenVM(VM):
                 vdi_uuid = xenapi.VDI.create(vdi)
             except:
                 print "Unable to create disk"
-            log.debug("VDI uuid is %s" % vdi_uuid)
+            log.info("VDI uuid is %s" % vdi_uuid)
             
             # create a VBD to plug the VDI into the VM
             vbd = { 'VDI' : vdi_uuid,
@@ -342,7 +342,7 @@ class XenVM(VM):
                   }
             log.debug("VBD configuration: %s" % vbd)
             vbd_uuid = xenapi.VBD.create(vbd)
-            log.debug("VBD uuid is %s" % vbd_uuid)
+            log.info("VBD uuid is %s" % vbd_uuid)
 
         # start the vm, if desired.
         if self.autostart:
@@ -365,7 +365,7 @@ class XenVM(VM):
                 try:
                     xenapi.VM.start(vm_uuid, True, True)
                 except:
-                    log.info('Unable to start VM')
+                    log.warn('Unable to start VM')
                     pass
 
     def is_existing_vm(self):
@@ -380,7 +380,7 @@ class XenVM(VM):
     def _find_best_aggr(self):
         """ probe available shared storage and determine which has the most free space """
         log.debug("in find_best_aggr()")
-        log.debug('Storage UUID: %s' % self.sr_aggr())
+        log.info('Storage UUID: %s' % self.sr_aggr())
 
         if self.xencache._get_shared_storage:
             sr_attrib = {}
@@ -407,7 +407,7 @@ class XenVM(VM):
             log.debug(sr_attrib)
             return best_aggr
         else:
-            log.error("Unable to determine storage repository")
+            log.warn("Unable to determine storage repository")
             return None
 
     def mac_addr():
@@ -466,7 +466,7 @@ class XenCache:
         """ probe the xenserver for available templates to use """
         log.debug('in _find_xen_templates')
         
-        log.debug('scanning all templates in XenServer')
+        log.info('scanning all templates in XenServer')
         template_uuids = {}
         for uuid in self.all_vm_records:
             for key in self.all_vm_records[uuid]:
@@ -481,14 +481,14 @@ class XenCache:
         """ probe for available storage backends """
         log.debug('in _find_shared_storage')
 
-        log.debug('scanning all available backend storage devices')
+        log.info('scanning all available backend storage devices')
         self.sr_aggr = {}
         for sr in self.all_sr_records:
             if 'shared' in self.all_sr_records[sr] and self.all_sr_records[sr]['shared']:
                 if self.all_sr_records[sr]['type'] == 'lvmoiscsi' or self.all_sr_records[sr]['type'] == 'netapp':
                     self.sr_aggr[self.all_sr_records[sr]['name_label']] = self.all_sr_records[sr]['uuid']
 
-        log.debug("Shared storage repositories found: %s" % self.sr_aggr)
+        log.info("Shared storage repositories found: %s" % self.sr_aggr)
         return self.sr_aggr
 
     def _query_sr_records(self):
@@ -496,7 +496,7 @@ class XenCache:
         log.debug("in _get_sr_records()")
         
         sr_records = xenapi.SR.get_all_records()
-        log.debug("Found SR records: %s" % sr_records)
+        log.debug("found SR records: %s" % sr_records)
         return sr_records
         
     def _query_vm_records(self):
@@ -504,7 +504,7 @@ class XenCache:
         log.debug("in _get_vm_records()")
         
         vm_records = xenapi.VM.get_all_records()
-        log.debug("Found VM records: %s" % vm_records)
+        log.debug("found VM records: %s" % vm_records)
         return vm_records
 
     def _get_shared_storage(self):
@@ -617,44 +617,48 @@ def purge_vm(myvm, options, cobbler):
         existing_VBDs = xencache._get_all_vm_records()[existing_vm]['VBDs']
         existing_VIFs = xencache._get_all_vm_records()[existing_vm]['VIFs']
 
-        log.debug('sending power off command to VM %s' % existing_vm) 
+        log.info('sending power off command to VM %s' % existing_vm) 
         try:
-            log.info("powering off %s" % existing_vm)
+            log.debug("powering off %s" % existing_vm)
             xenapi.VM.hard_shutdown(existing_vm)
         except:
-            log.info("power off command failed. Assuming VM is already shutdown...")
+            log.debug("power off command failed. Assuming VM is already shutdown...")
             pass
 
         for uuid in existing_VBDs:
             existing_VDIs.append(xenapi.VBD.get_record(uuid)['VDI'])
-            log.debug('sending destroy command for VBD %s' % uuid)
+            log.info('sending destroy command for VBD %s' % uuid)
             try:
+                log.debug("destroying VBD %s" % uuid)
                 xenapi.VBD.destroy(uuid)
             except:
-                log.info("VBD destroy command failed. Assuming VBD is already destroyed...")
+                log.debug("VBD destroy command failed. Assuming VBD is already destroyed...")
                 pass
 
         for uuid in existing_VIFs:
-            log.debug('sending destroy command for VIF %s' % uuid)
+            log.info('sending destroy command for VIF %s' % uuid)
             try:
+                log.debug("destroying VIF %s" % uuid)
                 xenapi.VIF.destroy(uuid)
             except:
-                log.info("VIF destroy command failed. Assuming VIF is already destroyed...")
+                log.debug("VIF destroy command failed. Assuming VIF is already destroyed...")
                 pass
 
         for uuid in existing_VDIs:
-            log.debug('sending destroy command for VDI %s' % uuid)
+            log.info('sending destroy command for VDI %s' % uuid)
             try:
+                log.debug("destroying VDI %s" % uuid)
                 xenapi.VDI.destroy(uuid)
             except:
-                log.info("VDI destroy command failed.  Assuming VDI is already destroyed...")
+                log.debug("VDI destroy command failed.  Assuming VDI is already destroyed...")
                 pass
 
-        log.debug('sending destroy command for VM %s' % existing_vm)
+        log.info('sending destroy command for VM %s' % existing_vm)
         try:
+            log.debug("destroying VM %s" % existing_vm)
             xenapi.VM.destroy(existing_vm)
         except:
-            log.info("VM destroy command failed.  Assuming VM is already destroyed...")
+            log.debug("VM destroy command failed.  Assuming VM is already destroyed...")
             pass
 
         if options.add_to_cobbler:
@@ -789,7 +793,7 @@ if __name__ == "__main__":
 
             myvm.set_ks_url(cobbler_server)
             if options.add_to_cobbler:
-                log.debug("Adding %s to cobbler" % myvm.name)
+                log.info("Adding %s to cobbler" % myvm.name)
                 # add the new system to cobbler
                 cobbler.add_system_to_cobbler(myvm)
             if options.autostart:
@@ -800,11 +804,28 @@ if __name__ == "__main__":
             
             # add the install repository location for kickstart
             if options.add_to_cobbler:
-                log.info("adding install repo to VM %s" % myvm.vm_uuid)
+                log.debug("adding install repo to VM %s" % myvm.vm_uuid)
                 xenapi.VM.add_to_other_config(myvm.vm_uuid, 'install-repository', cobbler.query_install_repo(myvm.fqdn))
                 myvm.nics['eth0']['macaddress-eth0'] = myvm.mac_addr
                 cobbler.add_mac_to_cobbler(myvm)
 
             if options.autostart:
                 log.info("sending start command to VM %s" % myvm.vm_uuid)
-                xenapi.VM.start(myvm.vm_uuid)
+                try:
+                    log.debug("first attempt to boot VM %s" % myvm.vm_uuid)
+                    xenapi.VM.start(myvm.vm_uuid)
+                except:
+                    log.debug("first attempt failed. trying 2 more times...")
+                    try:
+                        log.debug("second attempt to boot VM %s" % myvm.vm_uuid)
+                        xenapi.VM.start(myvm.vm_uuid)
+                    except:
+                        log.debug("second attempt failed. trying 1 more times...")
+                        try:
+                            log.debug("third attempt to boot VM %s" % myvm.vm_uuid)
+                            xenapi.VM.start(myvm.vm_uuid)
+                        except:
+                            log.debug("third attempt failed. giving up.")
+                            log.warn("VM %s did not autoboot.  Please manually boot up the VM" % myvm.name)
+
+            log.info("VM %s successfully created." % myvm.name)
