@@ -58,23 +58,20 @@ import XenAPI
 # nics = eth0 eth1 ethN
 # vm_template = CentOS 5.3 x64 (this name resides in xenserver)
 
-log_levels = {'debug': logging.DEBUG,
-              'info': logging.INFO,
-              'warning': logging.WARNING,
-              'error': logging.ERROR,
-              'critical': logging.CRITICAL
-             }
 global_log_level = logging.WARN
-default_log_file = '/var/log/mkvm.log'
+default_log_file = '/var/log/mkvm/mkvm.log'
+default_activity_log_file = '/var/log/mkvm/activity.log'
 default_log_format = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
 
 logging.basicConfig(filename=default_log_file,
                     level=logging.DEBUG,
                     format='%(asctime)s %(name)s - %(levelname)s - %(message)s',
-                    datefmt='%m-%d %H:%M'
+                    datefmt='%y.%m.%d %H:%M:%S'
                    )
 console = logging.StreamHandler(sys.stderr)
 console.setLevel(logging.WARN)
+formatter = logging.Formatter('%(name)s: %(levelname)-8s %(message)s')
+console.setFormatter(formatter)
 logging.getLogger("mkvm").addHandler(console)
 
 log = logging.getLogger("mkvm")
@@ -605,6 +602,13 @@ def purge_vm(myvm, options, cobbler):
     """ this will shutdown and delete any existing VMs with the same xencenter name """
     log.debug("in purge_vm")
     log.info("destroying VM %s per your request." % myvm.name)
+
+    try:
+        activity_log = open(default_activity_log_file, 'a')
+        activity_log.write('%s: %s purged VM %s\n' % (strftime("%Y-%m-%d %H:%M:%S"), options.cblr_username, myvm.name))
+        activity_log.close
+    except:
+	pass
     
     if not options.skip_countdown:
         print ''
@@ -709,6 +713,7 @@ def get_options():
 
     if options.debug:
         log.setLevel(logging.DEBUG)
+        console.setLevel(logging.DEBUG)
 
     if options.replace:
         options.ignore = True
@@ -801,6 +806,14 @@ if __name__ == "__main__":
             
             # actually create the VM
             myvm.create()
+
+            try:
+                activity_log = open(default_activity_log_file, 'a')
+                activity_log.write('%s: %s purged VM %s\n' % (strftime("%Y-%m-%d %H:%M:%S"), options.cblr_username, myvm.name))
+                activity_log.close
+            except:
+		pass
+
             
             # add the install repository location for kickstart
             if options.add_to_cobbler:
