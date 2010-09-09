@@ -609,8 +609,8 @@ def purge_vm(myvm, options, cobbler):
     if not options.skip_countdown:
         print ''
         print "DESTROYING %s" % myvm.name
-        print "##### YOU HAVE 3 SECONDS TO INTERUPT THIS WITH CTRL+C #####"
-        time.sleep(3)
+        print "##### YOU HAVE 5 SECONDS TO INTERUPT THIS WITH CTRL+C #####"
+        time.sleep(5)
         
     for existing_vm in myvm.is_existing_vm():
         vbd, vif, existing_VDIs = [], [], []
