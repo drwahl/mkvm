@@ -58,15 +58,27 @@ import XenAPI
 # nics = eth0 eth1 ethN
 # vm_template = CentOS 5.3 x64 (this name resides in xenserver)
 
+log_levels = {'debug': logging.DEBUG,
+              'info': logging.INFO,
+              'warning': logging.WARNING,
+              'error': logging.ERROR,
+              'critical': logging.CRITICAL
+             }
 global_log_level = logging.WARN
+default_log_file = '/var/log/mkvm.log'
 default_log_format = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-default_log_handler = logging.StreamHandler(sys.stderr)
-default_log_handler.setFormatter(default_log_format)
+
+logging.basicConfig(filename=default_log_file,
+                    level=logging.DEBUG,
+                    format='%(asctime)s %(name)s - %(levelname)s - %(message)s',
+                    datefmt='%m-%d %H:%M'
+                   )
+console = logging.StreamHandler(sys.stderr)
+console.setLevel(logging.WARN)
+logging.getLogger("mkvm").addHandler(console)
 
 log = logging.getLogger("mkvm")
-log.setLevel(global_log_level)
-log.addHandler(default_log_handler)
-log.debug("Starting logging")
+log.debug("Starting log")
 
 default_config_file="/etc/mkvm/mkvm.conf"
 default_template_file="/etc/mkvm/templates"
