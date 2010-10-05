@@ -243,7 +243,7 @@ class XenVM(VM):
         # Find which aggregate to put the disk on
         self.aggr = self._find_best_aggr()
 
-        self.vm_uuid = xenapi.VM.clone(xenapi.VM.get_by_name_label(self.xensession, self.vm_template)[0], self.name)
+        self.vm_uuid = xenapi.VM.clone(self.xensession, xenapi.VM.get_by_name_label(self.xensession, self.vm_template)['Value'][0], self.name)
         xenapi.VM.set_is_a_template(self.xensession, self.vm_uuid, False)
         self.vm_uuid = self.vm_uuid
 
@@ -297,7 +297,7 @@ class XenVM(VM):
                 'other_config': {},
               }
         vif_uuid = xenapi.VIF.create(self.xensession, vif)['Value']
-        self.mac_addr = xenapi.VIF.get_record(vif_uuid)['Value']['MAC']
+        self.mac_addr = xenapi.VIF.get_record(self.xensession, vif_uuid)['Value']['MAC']
 
         #resize the disk if the template created one for the vm
         if xenapi.VM.get_VBDs(self.xensession, self.vm_uuid)['Value']:
@@ -346,7 +346,7 @@ class XenVM(VM):
             xenapi.VM.power_state_reset(self.xensession, self.vm_uuid)
             self.start()
         else:
-            xenapi.VM.power_state_reset(self.vm_uuid)
+            xenapi.VM.power_state_reset(self.xensession, self.vm_uuid)
 
     def start(self):
         log.info('Booting %s' % self.name)
