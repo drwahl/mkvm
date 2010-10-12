@@ -1,5 +1,4 @@
 Requirements:
    python >= 2.4 
-   XenAPI
 
 You may have to manually create the /var/log/mkvm/ to get logging to work correctly.
