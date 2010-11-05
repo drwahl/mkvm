@@ -810,7 +810,7 @@ if __name__ == "__main__":
 
             try:
                 activity_log = open(default_activity_log_file, 'a')
-                activity_log.write('%s: %s purged VM %s\n' % (strftime("%Y-%m-%d %H:%M:%S"), options.cblr_username, myvm.name))
+                activity_log.write('%s: %s created VM %s\n' % (strftime("%Y-%m-%d %H:%M:%S"), options.cblr_username, myvm.name))
                 activity_log.close
             except:
 		pass
