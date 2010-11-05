@@ -585,6 +585,8 @@ class cobbler:
 
     def purge(self, myvm):
         """ remove cobbler profile. this assumes that the cobbler profile matches the FQDN of the VM """
+	vm_purge = self.cobbler.get_system_handle(myvm.fqdn, self.token)
+        self.cobbler.remove_system(myvm.fqdn, self.token)
         pass
     
     def __init__(self, cobbler_server, options):
@@ -668,7 +670,7 @@ def purge_vm(myvm, options, cobbler, xensession):
 
         if options.add_to_cobbler:
             log.info("removing cobbler profile for %s" % myvm.fqdn)
-            #cobbler.purge(myvm)
+            cobbler.purge(myvm)
             log.info("VM (%s) was destroyed and its system profile (%s) was removed from cobbler" % (myvm.name, myvm.fqdn))
         else:
             log.info("VM (%s) was destroyed" % myvm.name)
