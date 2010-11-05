@@ -585,7 +585,6 @@ class cobbler:
 
     def purge(self, myvm):
         """ remove cobbler profile. this assumes that the cobbler profile matches the FQDN of the VM """
-	vm_purge = self.cobbler.get_system_handle(myvm.fqdn, self.token)
         self.cobbler.remove_system(myvm.fqdn, self.token)
         pass
     
