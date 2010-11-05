@@ -243,7 +243,7 @@ class XenVM(VM):
         # Find which aggregate to put the disk on
         self.aggr = self._find_best_aggr()
 
-        self.vm_uuid = xenapi.VM.clone(self.xensession, xenapi.VM.get_by_name_label(self.xensession, self.vm_template)['Value'][0], self.name)
+        self.vm_uuid = xenapi.VM.clone(self.xensession, xenapi.VM.get_by_name_label(self.xensession, self.vm_template)['Value'][0], self.name)['Value']
         xenapi.VM.set_is_a_template(self.xensession, self.vm_uuid, False)
         self.vm_uuid = self.vm_uuid
 
@@ -310,7 +310,7 @@ class XenVM(VM):
             log.info("Building a(n) %sGB disk" % int(self.hddsize / 1024 / 1024 / 1024))
             vdi = { 'read_only' : False ,
                     'sharable' : True ,
-                    'SR' : str(xenapi.SR.get_by_name_label(self.xensession, self.aggr)[0]) ,
+                    'SR' : str(xenapi.SR.get_by_name_label(self.xensession, self.aggr)['Value'][0]) ,
                     'name_label' : '/dev/xvda' ,
                     'name_description' : '/dev/xvda on ' + self.name ,
                     'virtual_size' : str(int(self.hddsize)) ,
@@ -524,7 +524,7 @@ class XenCache:
         self.sr_aggr = self._query_shared_storage()
 
 
-class cobbler():
+class cobbler:
     """ everything related to cobbler """
     log.debug("in cobbler()")
 
@@ -825,20 +825,18 @@ if __name__ == "__main__":
 
             if options.autostart:
                 log.info("sending start command to VM %s" % myvm.vm_uuid)
-                try:
-                    log.debug("first attempt to boot VM %s" % myvm.vm_uuid)
-                    xenapi.VM.start(xensession, myvm.vm_uuid)
-                except:
+                log.debug("first attempt to boot VM %s" % myvm.vm_uuid)
+                autostart_return = xenapi.VM.start(xensession, myvm.vm_uuid, False, True)
+		if autostart_return['Status'] == 'Failure':
+		    print autostart_return['Value']
                     log.debug("first attempt failed. trying 2 more times...")
-                    try:
-                        log.debug("second attempt to boot VM %s" % myvm.vm_uuid)
-                        xenapi.VM.start(xensession, myvm.vm_uuid)
-                    except:
-                        log.debug("second attempt failed. trying 1 more times...")
-                        try:
-                            log.debug("third attempt to boot VM %s" % myvm.vm_uuid)
-                            xenapi.VM.start(xensession, myvm.vm_uuid)
-                        except:
+                    log.debug("second attempt to boot VM %s" % myvm.vm_uuid)
+                    autostart_return = xenapi.VM.start(xensession, myvm.vm_uuid, False, True)
+                    if autostart_return == 'Failure':
+		        log.debug("second attempt failed. trying 1 more time...")
+                        log.debug("third attempt to boot VM %s" % myvm.vm_uuid)
+                        autostart_return = xenapi.VM.start(xensession, myvm.vm_uuid, False, True)
+                        if autostart_status == 'Failure':
                             log.debug("third attempt failed. giving up.")
                             log.warn("VM %s did not autoboot.  Please manually boot up the VM" % myvm.name)
 
