@@ -44,7 +44,6 @@ import time
 from time import strftime
 import traceback
 import xmlrpclib
-import XenAPI
 
 # Config file format:
 #
@@ -58,23 +57,20 @@ import XenAPI
 # nics = eth0 eth1 ethN
 # vm_template = CentOS 5.3 x64 (this name resides in xenserver)
 
-log_levels = {'debug': logging.DEBUG,
-              'info': logging.INFO,
-              'warning': logging.WARNING,
-              'error': logging.ERROR,
-              'critical': logging.CRITICAL
-             }
 global_log_level = logging.WARN
-default_log_file = '/var/log/mkvm.log'
+default_log_file = '/var/log/mkvm/mkvm.log'
+default_activity_log_file = '/var/log/mkvm/activity.log'
 default_log_format = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
 
 logging.basicConfig(filename=default_log_file,
                     level=logging.DEBUG,
                     format='%(asctime)s %(name)s - %(levelname)s - %(message)s',
-                    datefmt='%m-%d %H:%M'
+                    datefmt='%y.%m.%d %H:%M:%S'
                    )
 console = logging.StreamHandler(sys.stderr)
 console.setLevel(logging.WARN)
+formatter = logging.Formatter('%(name)s: %(levelname)-8s %(message)s')
+console.setFormatter(formatter)
 logging.getLogger("mkvm").addHandler(console)
 
 log = logging.getLogger("mkvm")
@@ -141,9 +137,10 @@ class XenVM(VM):
     userconfig = None
     sr_aggr = None
 
-    def __init__(self, name, xencache):
+    def __init__(self, name, xencache, xensession):
         VM.__init__(self, name)
         self.xencache = xencache
+        self.xensession = xensession
 
     def _set_vmtype(self, vmtype):
         log.debug("in _set_vmtype()")
@@ -246,33 +243,33 @@ class XenVM(VM):
         # Find which aggregate to put the disk on
         self.aggr = self._find_best_aggr()
 
-        self.vm_uuid = xenapi.VM.clone(xenapi.VM.get_by_name_label(self.vm_template)[0], self.name)
-        xenapi.VM.set_is_a_template(self.vm_uuid, False)
+        self.vm_uuid = xenapi.VM.clone(self.xensession, xenapi.VM.get_by_name_label(self.xensession, self.vm_template)['Value'][0], self.name)['Value']
+        xenapi.VM.set_is_a_template(self.xensession, self.vm_uuid, False)
         self.vm_uuid = self.vm_uuid
 
         log.info('new vm uuid is %s' % self.vm_uuid)
 
-        xenapi.VM.set_VCPUs_max(self.vm_uuid, str(int(self.vcpus)))
-        xenapi.VM.set_VCPUs_at_startup(self.vm_uuid, str(int(self.vcpus)))
-        xenapi.VM.set_memory_dynamic_max(self.vm_uuid, str(int(self.vram)))
-        xenapi.VM.set_memory_static_max(self.vm_uuid, str(int(self.vram)))
-        xenapi.VM.set_PV_args(self.vm_uuid, "text ks=" + self.ks_url)
+        xenapi.VM.set_VCPUs_max(self.xensession, self.vm_uuid, str(int(self.vcpus)))
+        xenapi.VM.set_VCPUs_at_startup(self.xensession, self.vm_uuid, str(int(self.vcpus)))
+        xenapi.VM.set_memory_dynamic_max(self.xensession, self.vm_uuid, str(int(self.vram)))
+        xenapi.VM.set_memory_static_max(self.xensession, self.vm_uuid, str(int(self.vram)))
+        xenapi.VM.set_PV_args(self.xensession, self.vm_uuid, "text ks=" + self.ks_url)
         try:
-            xenapi.VM.remove_from_other_config(self.vm_uuid, 'HideFromXenCenter')
+            xenapi.VM.remove_from_other_config(self.xensession, self.vm_uuid, 'HideFromXenCenter')
         except:
             pass
-        xenapi.VM.add_to_other_config(self.vm_uuid, 'HideFromXenCenter', 'false')
+        xenapi.VM.add_to_other_config(self.xensession, self.vm_uuid, 'HideFromXenCenter', 'false')
         try:
-            xenapi.VM.remove_from_other_config(self.vm_uuid, 'install-repository')
+            xenapi.VM.remove_from_other_config(self.xensession, self.vm_uuid, 'install-repository')
         except:
             pass
         if options.cblr_username:
-            xenapi.VM.set_name_description(self.vm_uuid, "Created by " + str(options.cblr_username) + " using mkvm.py. " + strftime("%Y-%m-%d %H:%M:%S"))
+            xenapi.VM.set_name_description(self.xensession, self.vm_uuid, "Created by " + str(options.cblr_username) + " using mkvm.py. " + strftime("%Y-%m-%d %H:%M:%S"))
         else:
-            xenapi.VM.set_name_description(self.vm_uuid, "Created by " + getpass.getuser() + " using mkvm.py. " +strftime("%Y-%m-%d %H:%M:%S"))
+            xenapi.VM.set_name_description(self.xensession, self.vm_uuid, "Created by " + getpass.getuser() + " using mkvm.py. " +strftime("%Y-%m-%d %H:%M:%S"))
 
         network_uuid = ''
-        network_records = xenapi.network.get_all_records()
+        network_records = xenapi.network.get_all_records(self.xensession)['Value']
         # try to find the default network
         for k in network_records:
             if "other_config" in network_records[k] and 'automatic' in network_records[k]['other_config'] and network_records[k]['other_config']['automatic'] == 'true':
@@ -299,21 +296,21 @@ class XenVM(VM):
                 'qos_algorithm_params': {},
                 'other_config': {},
               }
-        vif_uuid = xenapi.VIF.create(vif)
-        self.mac_addr = xenapi.VIF.get_record(vif_uuid)['MAC']
+        vif_uuid = xenapi.VIF.create(self.xensession, vif)['Value']
+        self.mac_addr = xenapi.VIF.get_record(self.xensession, vif_uuid)['Value']['MAC']
 
         #resize the disk if the template created one for the vm
-        if xenapi.VM.get_VBDs(self.vm_uuid):
+        if xenapi.VM.get_VBDs(self.xensession, self.vm_uuid)['Value']:
             log.info("Resizing VM disk to %sGB" % int(self.hddsize / 1024 / 1024 / 1024))
-            vdb_uuid = xenapi.VM.get_VBDs(self.vm_uuid)
-            vdi_uuid = xenapi.VDB.get_VDI(vdb_uuid)
-            xenapi.VDI.resize(vdi_uuid, self.hddsize)
+            vdb_uuid = xenapi.VM.get_VBDs(self.xensession, self.vm_uuid)['Value']
+            vdi_uuid = xenapi.VDB.get_VDI(self.xensession, vdb_uuid)['Value']
+            xenapi.VDI.resize(self.xensession, vdi_uuid, self.hddsize)
         else:
             # otherwise create a disk of the requested size
             log.info("Building a(n) %sGB disk" % int(self.hddsize / 1024 / 1024 / 1024))
             vdi = { 'read_only' : False ,
                     'sharable' : True ,
-                    'SR' : str(xenapi.SR.get_by_name_label(self.aggr)[0]) ,
+                    'SR' : str(xenapi.SR.get_by_name_label(self.xensession, self.aggr)['Value'][0]) ,
                     'name_label' : '/dev/xvda' ,
                     'name_description' : '/dev/xvda on ' + self.name ,
                     'virtual_size' : str(int(self.hddsize)) ,
@@ -323,7 +320,7 @@ class XenVM(VM):
 
             log.debug("VDI configuration: %s" % vdi)
             try:
-                vdi_uuid = xenapi.VDI.create(vdi)
+                vdi_uuid = xenapi.VDI.create(self.xensession, vdi)['Value']
             except:
                 print "Unable to create disk"
             log.info("VDI uuid is %s" % vdi_uuid)
@@ -341,29 +338,29 @@ class XenVM(VM):
                     'qos_algorithm_params': {},
                   }
             log.debug("VBD configuration: %s" % vbd)
-            vbd_uuid = xenapi.VBD.create(vbd)
+            vbd_uuid = xenapi.VBD.create(self.xensession, vbd)['Value']
             log.info("VBD uuid is %s" % vbd_uuid)
 
         # start the vm, if desired.
         if self.autostart:
-            xenapi.VM.power_state_reset(self.vm_uuid)
+            xenapi.VM.power_state_reset(self.xensession, self.vm_uuid)
             self.start()
         else:
-            xenapi.VM.power_state_reset(self.vm_uuid)
+            xenapi.VM.power_state_reset(self.xensession, self.vm_uuid)
 
     def start(self):
         log.info('Booting %s' % self.name)
 
         try:
-            xenapi.VM.start(vm_uuid, True, True)
+            xenapi.VM.start(self.xensession, vm_uuid, True, True)
         except:
             log.info('First attempt to start VM has FAILED. Will try 2 more times...')
             try:
-                xenapi.VM.start(vm_uuid, True, True)
+                xenapi.VM.start(self.xensession, vm_uuid, True, True)
             except:
                 log.info('Second attempt to start VM has FAILED.  Will try 1 more time...')
                 try:
-                    xenapi.VM.start(vm_uuid, True, True)
+                    xenapi.VM.start(self.xensession, vm_uuid, True, True)
                 except:
                     log.warn('Unable to start VM')
                     pass
@@ -386,7 +383,7 @@ class XenVM(VM):
             sr_attrib = {}
             for sr in self.xencache._get_shared_storage():
                 
-                sruuid = xenapi.SR.get_by_name_label(sr)[0]
+                sruuid = xenapi.SR.get_by_name_label(self.xensession, sr)['Value'][0]
                 srname = sr
                 
                 srphysusage = self.xencache._get_all_sr_records()[sruuid]['physical_utilisation']
@@ -495,7 +492,7 @@ class XenCache:
         """ cache all the storage repository records, so we don't have to query XenServer for them multiple times """
         log.debug("in _get_sr_records()")
         
-        sr_records = xenapi.SR.get_all_records()
+        sr_records = xenapi.SR.get_all_records(self.xensession)['Value']
         log.debug("found SR records: %s" % sr_records)
         return sr_records
         
@@ -503,7 +500,7 @@ class XenCache:
         """ cache all the VM records, so we don't have to query XenServer for them multiple times """
         log.debug("in _get_vm_records()")
         
-        vm_records = xenapi.VM.get_all_records()
+        vm_records = xenapi.VM.get_all_records(self.xensession)['Value']
         log.debug("found VM records: %s" % vm_records)
         return vm_records
 
@@ -519,14 +516,15 @@ class XenCache:
     def _get_xen_templates(self):
         return self.vm_templates
 
-    def __init__(self):
+    def __init__(self, xensession):
+        self.xensession = xensession
         self.all_sr_records = self._query_sr_records()
         self.all_vm_records = self._query_vm_records()
         self.vm_templates = self._query_xen_templates()
         self.sr_aggr = self._query_shared_storage()
 
 
-class cobbler():
+class cobbler:
     """ everything related to cobbler """
     log.debug("in cobbler()")
 
@@ -587,6 +585,7 @@ class cobbler():
 
     def purge(self, myvm):
         """ remove cobbler profile. this assumes that the cobbler profile matches the FQDN of the VM """
+        self.cobbler.remove_system(myvm.fqdn, self.token)
         pass
     
     def __init__(self, cobbler_server, options):
@@ -601,16 +600,23 @@ class cobbler():
             log.error(e)
             sys.exit(-1)
 
-def purge_vm(myvm, options, cobbler):
+def purge_vm(myvm, options, cobbler, xensession):
     """ this will shutdown and delete any existing VMs with the same xencenter name """
     log.debug("in purge_vm")
     log.info("destroying VM %s per your request." % myvm.name)
+
+    try:
+        activity_log = open(default_activity_log_file, 'a')
+        activity_log.write('%s: %s purged VM %s\n' % (strftime("%Y-%m-%d %H:%M:%S"), options.cblr_username, myvm.name))
+        activity_log.close
+    except:
+	pass
     
     if not options.skip_countdown:
         print ''
         print "DESTROYING %s" % myvm.name
-        print "##### YOU HAVE 3 SECONDS TO INTERUPT THIS WITH CTRL+C #####"
-        time.sleep(3)
+        print "##### YOU HAVE 5 SECONDS TO INTERUPT THIS WITH CTRL+C #####"
+        time.sleep(5)
         
     for existing_vm in myvm.is_existing_vm():
         vbd, vif, existing_VDIs = [], [], []
@@ -620,17 +626,17 @@ def purge_vm(myvm, options, cobbler):
         log.info('sending power off command to VM %s' % existing_vm) 
         try:
             log.debug("powering off %s" % existing_vm)
-            xenapi.VM.hard_shutdown(existing_vm)
+            xenapi.VM.hard_shutdown(xensession, existing_vm)
         except:
             log.debug("power off command failed. Assuming VM is already shutdown...")
             pass
 
         for uuid in existing_VBDs:
-            existing_VDIs.append(xenapi.VBD.get_record(uuid)['VDI'])
+            existing_VDIs.append(xenapi.VBD.get_record(xensession, uuid)['Value']['VDI'])
             log.info('sending destroy command for VBD %s' % uuid)
             try:
                 log.debug("destroying VBD %s" % uuid)
-                xenapi.VBD.destroy(uuid)
+                xenapi.VBD.destroy(xensession, uuid)
             except:
                 log.debug("VBD destroy command failed. Assuming VBD is already destroyed...")
                 pass
@@ -639,7 +645,7 @@ def purge_vm(myvm, options, cobbler):
             log.info('sending destroy command for VIF %s' % uuid)
             try:
                 log.debug("destroying VIF %s" % uuid)
-                xenapi.VIF.destroy(uuid)
+                xenapi.VIF.destroy(xensession, uuid)
             except:
                 log.debug("VIF destroy command failed. Assuming VIF is already destroyed...")
                 pass
@@ -648,7 +654,7 @@ def purge_vm(myvm, options, cobbler):
             log.info('sending destroy command for VDI %s' % uuid)
             try:
                 log.debug("destroying VDI %s" % uuid)
-                xenapi.VDI.destroy(uuid)
+                xenapi.VDI.destroy(xensession, uuid)
             except:
                 log.debug("VDI destroy command failed.  Assuming VDI is already destroyed...")
                 pass
@@ -656,14 +662,14 @@ def purge_vm(myvm, options, cobbler):
         log.info('sending destroy command for VM %s' % existing_vm)
         try:
             log.debug("destroying VM %s" % existing_vm)
-            xenapi.VM.destroy(existing_vm)
+            xenapi.VM.destroy(xensession, existing_vm)
         except:
             log.debug("VM destroy command failed.  Assuming VM is already destroyed...")
             pass
 
         if options.add_to_cobbler:
             log.info("removing cobbler profile for %s" % myvm.fqdn)
-            #cobbler.purge(myvm)
+            cobbler.purge(myvm)
             log.info("VM (%s) was destroyed and its system profile (%s) was removed from cobbler" % (myvm.name, myvm.fqdn))
         else:
             log.info("VM (%s) was destroyed" % myvm.name)
@@ -709,6 +715,7 @@ def get_options():
 
     if options.debug:
         log.setLevel(logging.DEBUG)
+        console.setLevel(logging.DEBUG)
 
     if options.replace:
         options.ignore = True
@@ -748,9 +755,9 @@ if __name__ == "__main__":
         xenserver_password = getpass.getpass('XenServer Password: ')
     if not xenserver.startswith('http'):
         xenserver = 'https://' + xenserver + '/'
-    xensession = XenAPI.Session(xenserver)
-    xensession.login_with_password(xenserver_username, xenserver_password)
-    xenapi = xensession.xenapi
+
+    xenapi = xmlrpclib.Server(xenserver)
+    xensession = xenapi.session.login_with_password(xenserver_username, xenserver_password)['Value']
 
     cobbler_server = default_configs.get_item('cobbler_server')
     if options.add_to_cobbler:
@@ -760,12 +767,12 @@ if __name__ == "__main__":
     cfg = ConfigFile(options.vmfile) # user vm config.
     tmpl = ConfigFile(options.template_file) # default config templates.
 
-    xencache = XenCache()
+    xencache = XenCache(xensession)
 
     vmlist = []
     for vmname in cfg.configparser.sections():
         log.debug("setting up %s" % vmname)
-        myvm = XenVM(vmname, xencache)
+        myvm = XenVM(vmname, xencache, xensession)
 
         # cache some xen information so we don't have to query xenserver multiple times for the same data
         myvm.sr_aggr = xencache._get_shared_storage
@@ -778,7 +785,7 @@ if __name__ == "__main__":
 
         # if invoked to delete VMs, run through the input file and delete all matches
         if options.destroy:
-            purge_vm(myvm, options, cobbler)
+            purge_vm(myvm, options, cobbler, xensession)
             continue
         
         # warn the user before creating an identical VM
@@ -789,7 +796,7 @@ if __name__ == "__main__":
             continue
         else:
             if options.replace:
-                purge_vm(myvm, options, cobbler)
+                purge_vm(myvm, options, cobbler, xensession)
 
             myvm.set_ks_url(cobbler_server)
             if options.add_to_cobbler:
@@ -801,30 +808,36 @@ if __name__ == "__main__":
             
             # actually create the VM
             myvm.create()
+
+            try:
+                activity_log = open(default_activity_log_file, 'a')
+                activity_log.write('%s: %s created VM %s\n' % (strftime("%Y-%m-%d %H:%M:%S"), options.cblr_username, myvm.name))
+                activity_log.close
+            except:
+		pass
+
             
             # add the install repository location for kickstart
             if options.add_to_cobbler:
                 log.debug("adding install repo to VM %s" % myvm.vm_uuid)
-                xenapi.VM.add_to_other_config(myvm.vm_uuid, 'install-repository', cobbler.query_install_repo(myvm.fqdn))
+                xenapi.VM.add_to_other_config(xensession, myvm.vm_uuid, 'install-repository', cobbler.query_install_repo(myvm.fqdn))
                 myvm.nics['eth0']['macaddress-eth0'] = myvm.mac_addr
                 cobbler.add_mac_to_cobbler(myvm)
 
             if options.autostart:
                 log.info("sending start command to VM %s" % myvm.vm_uuid)
-                try:
-                    log.debug("first attempt to boot VM %s" % myvm.vm_uuid)
-                    xenapi.VM.start(myvm.vm_uuid)
-                except:
+                log.debug("first attempt to boot VM %s" % myvm.vm_uuid)
+                autostart_return = xenapi.VM.start(xensession, myvm.vm_uuid, False, True)
+		if autostart_return['Status'] == 'Failure':
+		    print autostart_return['Value']
                     log.debug("first attempt failed. trying 2 more times...")
-                    try:
-                        log.debug("second attempt to boot VM %s" % myvm.vm_uuid)
-                        xenapi.VM.start(myvm.vm_uuid)
-                    except:
-                        log.debug("second attempt failed. trying 1 more times...")
-                        try:
-                            log.debug("third attempt to boot VM %s" % myvm.vm_uuid)
-                            xenapi.VM.start(myvm.vm_uuid)
-                        except:
+                    log.debug("second attempt to boot VM %s" % myvm.vm_uuid)
+                    autostart_return = xenapi.VM.start(xensession, myvm.vm_uuid, False, True)
+                    if autostart_return == 'Failure':
+		        log.debug("second attempt failed. trying 1 more time...")
+                        log.debug("third attempt to boot VM %s" % myvm.vm_uuid)
+                        autostart_return = xenapi.VM.start(xensession, myvm.vm_uuid, False, True)
+                        if autostart_status == 'Failure':
                             log.debug("third attempt failed. giving up.")
                             log.warn("VM %s did not autoboot.  Please manually boot up the VM" % myvm.name)
 
