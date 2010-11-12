@@ -386,7 +386,7 @@ class XenVM(VM):
                 sruuid = xenapi.SR.get_by_name_label(self.xensession, sr)['Value'][0]
                 srname = sr
                 
-                srphysusage = self.xencache._get_all_sr_records()[sruuid]['physical_utilisation']
+		srphysusage = xenapi.SR.get_record(self.xensession, sruuid)['Value']['physical_utilisation']
                 srphysusage = float(srphysusage)
                 log.debug("%s's usage is %s" % (srname, srphysusage))
                 
