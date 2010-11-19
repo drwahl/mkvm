@@ -249,6 +249,7 @@ class XenVM(VM):
 
         log.info('new vm uuid is %s' % self.vm_uuid)
 
+        # Set VM parameters (RAM, CPU, etc.)
         xenapi.VM.set_VCPUs_max(self.xensession, self.vm_uuid, str(int(self.vcpus)))
         xenapi.VM.set_VCPUs_at_startup(self.xensession, self.vm_uuid, str(int(self.vcpus)))
         xenapi.VM.set_memory_dynamic_max(self.xensession, self.vm_uuid, str(int(self.vram)))
@@ -816,7 +817,9 @@ if __name__ == "__main__":
             except:
 		pass
 
-            
+            # add FQDN to xenserver database
+	    xenapi.VM.add_to_other_config(self.xensession, self.vm_uuid, 'FQDN', myvm.fqdn)
+
             # add the install repository location for kickstart
             if options.add_to_cobbler:
                 log.debug("adding install repo to VM %s" % myvm.vm_uuid)
@@ -829,7 +832,6 @@ if __name__ == "__main__":
                 log.debug("first attempt to boot VM %s" % myvm.vm_uuid)
                 autostart_return = xenapi.VM.start(xensession, myvm.vm_uuid, False, True)
 		if autostart_return['Status'] == 'Failure':
-		    print autostart_return['Value']
                     log.debug("first attempt failed. trying 2 more times...")
                     log.debug("second attempt to boot VM %s" % myvm.vm_uuid)
                     autostart_return = xenapi.VM.start(xensession, myvm.vm_uuid, False, True)
