@@ -4,7 +4,6 @@ import time
 import xmlrpclib
 import logging
 import sys
-#import mkvm
 
 global_log_level = logging.WARN
 default_log_file = '/var/log/mkvm/vm-zamboni.log'
@@ -36,8 +35,10 @@ while True:
         if not all_vm_records[vm_uuid]['is_control_domain']:
             if 'expiry' in all_vm_records[vm_uuid]['other_config']:
                 if int(all_vm_records[vm_uuid]['other_config']['expiry']) < date:
-                    print "deleting %s" % all_vm_records[vm_uuid]['name_label']
-		    raw_input()
+                    activity_log = open(default_activity_log_file, 'a')
+                    activity_log.write('%s: %s purged VM %s\n' % (time.strftime("%Y-%m-%d %H:%M:%S"), "vm-zamboni", all_vm_records[vm_uuid]['name_label']))
+                    activity_log.close
+
 		    vmcache = xenapi.VM.get_record(xensession, vm_uuid)['Value']
                     vbd, vif, VDIs = [], [], []
                     VBDs = vmcache['VBDs']
