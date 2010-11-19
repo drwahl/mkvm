@@ -842,3 +842,4 @@ if __name__ == "__main__":
                             log.warn("VM %s did not autoboot.  Please manually boot up the VM" % myvm.name)
 
             log.info("VM %s successfully created." % myvm.name)
+	    xenapi.session.logout(xensession)
