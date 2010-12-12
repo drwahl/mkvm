@@ -5,6 +5,10 @@ import xmlrpclib
 import logging
 import sys
 
+xen_server = 'https://foo.example.com'
+xen_user = 'root'
+xen_password = 'password'
+
 global_log_level = logging.WARN
 default_log_file = '/var/log/mkvm/vm-zamboni.log'
 default_activity_log_file = '/var/log/mkvm/activity.log'
@@ -25,8 +29,8 @@ log = logging.getLogger("vm-zamboni")
 log.debug("Starting log")
 
 while True:
-    xenapi = xmlrpclib.Server('https://xenserver01.corp.sea1.cmates.com')
-    xensession = xenapi.session.login_with_password('root', 'xencenter')['Value']
+    xenapi = xmlrpclib.Server(xen_server)
+    xensession = xenapi.session.login_with_password(xen_user, xen_password)['Value']
 
     date = int(time.time())
     all_vm_records = xenapi.VM.get_all_records(xensession)['Value']
